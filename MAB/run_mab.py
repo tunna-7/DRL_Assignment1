@@ -28,11 +28,17 @@ print("=" * 60)
 # math   : Mathematical functions (log for UCB1)
 # ============================================================
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
 import math
+
+try:
+    OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    OUTPUT_DIR = os.getcwd()  # Jupyter: CWD is the notebook's own directory
 
 print("All libraries imported successfully!")
 print(f"NumPy version     : {np.__version__}")
@@ -246,7 +252,8 @@ def run_immediate_exploitation():
     successes     = np.zeros(K)  # Total successful recoveries per medicine
     cumulative_reward = 0.0      # Running total of utility scores
     reward_history    = []       # Track reward at each step for plotting
-    
+    best_arm          = None     # Locked-in best medicine after Phase 1
+
     print("Running Immediate Exploitation Strategy...")
     print(f"Phase 1: Testing each of {K} medicines 10 times "
           f"({K*10} patients)")
@@ -263,10 +270,11 @@ def run_immediate_exploitation():
             # Each medicine gets exactly 10 trials
             arm = i % K
         else:
-            # Phase 2: Pure exploitation
-            # Select medicine with highest average success rate
-            avg_success = successes / np.maximum(counts, 1)
-            arm = int(np.argmax(avg_success))
+            # Phase 2: Pure exploitation — lock in best medicine once
+            if best_arm is None:
+                avg_success = successes / np.maximum(counts, 1)
+                best_arm = int(np.argmax(avg_success))
+            arm = best_arm
         
         # ---- SIMULATE OUTCOME ----
         outcome = get_clinical_outcome(arm)
@@ -285,12 +293,11 @@ def run_immediate_exploitation():
     
     # Calculate final statistics
     avg_success  = successes / np.maximum(counts, 1)
-    best_medicine = int(np.argmax(avg_success))
-    
+
     print("\n--- Results: Immediate Exploitation ---")
     print(f"Final Cumulative Reward : {cumulative_reward:.4f}")
-    print(f"Best Medicine Selected  : Medicine {best_medicine} "
-          f"(True P = {P_hidden[best_medicine]})")
+    print(f"Locked-in Medicine      : Medicine {best_arm} "
+          f"(True P = {P_hidden[best_arm]})")
     print(f"\nMedicine Pull Statistics:")
     print("-" * 50)
     print(f"{'Medicine':^10} | {'Pulls':^8} | "
@@ -460,8 +467,8 @@ print(f"{'50%':^12} | {rewards_eps50[-1]:^15.4f} | "
       f"{'Too much exploration':^30}")
 print("=" * 65)
 print("\nConclusion:")
-print("  epsilon=1%  : Exploits heavily. Good reward but may miss")
-print("                better medicines if early samples were unlucky.")
+print("  epsilon=1%  : Exploits heavily. Lowest reward if early samples")
+print("                are unlucky — premature convergence to a suboptimal arm.")
 print("  epsilon=10% : Good balance. Recommended for clinical trials.")
 print("  epsilon=50% : Wastes too many trials on random exploration.")
 print("                Ethically problematic in hospital settings.")
@@ -526,7 +533,7 @@ def run_ucb1():
             # Phase 2: Select arm with highest UCB score
             # UCB(a) = avg_success + sqrt(2 * ln(t) / N(a))
             avg_success = successes / counts
-            confidence  = np.sqrt((2 * math.log(i)) / counts)
+            confidence  = np.sqrt((2 * math.log(i + 1)) / counts)
             ucb_scores  = avg_success + confidence
             arm = int(np.argmax(ucb_scores))
             
@@ -686,7 +693,7 @@ def plot_cumulative_rewards():
     ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('MAB_Comparison.png', dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(OUTPUT_DIR, 'MAB_Comparison.png'), dpi=150, bbox_inches='tight')
     plt.show()
     print("Plot saved as 'MAB_Comparison.png'")
 
@@ -750,7 +757,7 @@ for bar, val in zip(bars4, P_hidden):
 ax4.grid(True, alpha=0.3, axis='y')
 
 plt.tight_layout()
-plt.savefig('MAB_Analysis.png', dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(OUTPUT_DIR, 'MAB_Analysis.png'), dpi=150, bbox_inches='tight')
 plt.show()
 print("Analysis plot saved as 'MAB_Analysis.png'")
 
@@ -771,18 +778,18 @@ Q1. Which strategy achieves the HIGHEST cumulative reward?
 ---------------------------------------------------------
 Answer: {best_strategy} with final reward = {best_reward:.4f}
 
-UCB1 achieves the highest cumulative reward because it uses
-a mathematically principled confidence bound to balance
-exploration and exploitation. It ensures all medicines are
-tried sufficiently while progressively focusing on the best
-performing medicine as evidence accumulates.
+{best_strategy} achieves the highest reward in this run (seed G={G}).
+Note: results are seed-dependent. In general, UCB1 provides stronger
+theoretical guarantees (O(log n) regret bounds) and more consistent
+performance across different seeds, making it the preferred choice
+when long-term reliability matters more than one-run performance.
 
 Q2. Which strategy identifies the BEST MEDICINE FASTEST?
 ---------------------------------------------------------
 Answer: Immediate Exploitation (Greedy)
 
 The greedy strategy locks onto the best-observed medicine
-after just K?10 = {K*10} trials. However, this speed comes
+after just K×10 = {K*10} trials. However, this speed comes
 with risk: if the true best medicine had unlucky early trials,
 a suboptimal medicine gets selected permanently.
 
@@ -816,10 +823,9 @@ simulation. Very low epsilon (1%) behaves almost greedily after
 early learning and shows the most stable performance curve.
 High epsilon (50%) explores too aggressively, resulting in the
 lowest cumulative reward and being ethically questionable in a
-real hospital setting. UCB1 is the most principled approach,
-offering the highest final reward with theoretical guarantees on
-regret minimization, making it the best overall strategy for
-adaptive clinical trial design.
+real hospital setting. UCB1 is the most principled approach, offering the most
+theoretically consistent performance with O(log n) regret guarantees,
+making it the best overall strategy for adaptive clinical trial design.
 """)
 
 # ============================================================
